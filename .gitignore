@@ -24,4 +24,5 @@ dist/
 第三章/
 
 # ===== 运行时个人数据 =====
-history.json
+history.json*
+history

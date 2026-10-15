@@ -1,6 +1,9 @@
 import os
 import sys
 import json
+from errno import EMSGSIZE
+from idlelib import history
+
 import requests
 from pathlib import Path
 from datetime import datetime
@@ -29,6 +32,40 @@ headers = {
     "Content-Type": "application/json",
 }
 
+HISTORY_FILE = BASE_DIR / "history.json"
+
+def load_history():
+    if not HISTORY_FILE.exists():
+        return []
+    try:
+        with open(HISTORY_FILE, "r",encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"[load_history] 历史文件读取失败,已忽略{e}")
+        return []
+    if not isinstance(data, list):
+        print("[load_history]历史文件格式不对,已忽略")
+        return []
+    return [m for m in data
+            if isinstance(m, dict)
+            and m.get("role") in ("user", "assistant")
+            and not m.get("tool_calls")
+            and isinstance(m.get("content"), str)
+            and m.get("content").strip()]
+
+def save_history(msgs):
+    pure = [m for m in msgs
+            if m.get("role") in ("user", "assistant")
+            and not m.get("tool_calls")
+            and isinstance(m.get("content"), str)
+            and m.get("content").strip()]
+    tmp = HISTORY_FILE.with_name(HISTORY_FILE.name + ".tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(pure, f,ensure_ascii=False,indent=2)
+        os.replace(tmp, HISTORY_FILE)
+    except OSError as e:
+        print(f"[save_history]历史保存失败:{e}")
 
 def safe_json_parse(response):
     text = (response.text or "").strip()
@@ -110,7 +147,11 @@ SYSTEM_PROMPT = """你是智能助手，你拥有三个工具：get_current_time
 
 SUMMARY_SYSTEM = "你是一个简洁的中文助手，只用自然语言回答，禁止输出任何工具调用相关内容。"
 
-messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+_history = load_history()
+messages = [{"role": "system", "content": SYSTEM_PROMPT}] + _history
+if _history:
+    print(f"[已加载{len(_history)}条历史对话]")
+
 MAX_MSG_COUNT = 10
 
 tools = [
@@ -143,7 +184,7 @@ while True:
         break
 
     messages.append({"role": "user", "content": user_msg})
-    if len(messages) > MAX_MSG_COUNT:
+    while len(messages) > MAX_MSG_COUNT:
         messages.pop(1)
 
     json_body = {
@@ -233,12 +274,14 @@ while True:
             final_ans = res_data2["choices"][0]["message"]["content"]
             print(f"AI: {final_ans}")
             messages.append({"role": "assistant", "content": final_ans})
+            save_history(messages)
             continue
 
         elif finish_reason == "stop":
             ans = choice["message"]["content"]
             print(f"AI: {ans}")
             messages.append({"role": "assistant", "content": ans})
+            save_history(messages)
 
     except requests.exceptions.Timeout:
         print("AI: 请求超时")
