@@ -25,4 +25,6 @@ dist/
 
 # ===== 运行时个人数据 =====
 history.json*
+data/history.json
+data/chat_history.json
 history

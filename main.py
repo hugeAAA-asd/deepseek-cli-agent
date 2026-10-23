@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+from rag_core import search, search_knowledge_base
 from errno import EMSGSIZE
 from idlelib import history
 
@@ -32,7 +33,7 @@ headers = {
     "Content-Type": "application/json",
 }
 
-HISTORY_FILE = BASE_DIR / "history.json"
+HISTORY_FILE = BASE_DIR / "data" / "history.json"
 
 def load_history():
     if not HISTORY_FILE.exists():
@@ -130,7 +131,7 @@ def get_weather(city_name):
     return f"天气查询失败,错误码{data.get('code')}"
 
 
-SYSTEM_PROMPT = """你是智能助手，你拥有三个工具：get_current_time、calculate、get_weather。
+SYSTEM_PROMPT = """你是智能助手，你拥有四个工具：get_current_time、calculate、get_weather、search_knowledge_base。
 规则：
 1. 用户询问时间、日期，**必须调用 get_current_time**，不要编造时间。
 2. 用户需要数学计算，**必须调用 calculate**，数学表达式放到expr参数。
@@ -171,6 +172,22 @@ tools = [
         "parameters": {"type": "object",
             "properties": {"city_name": {"type": "string", "description": "城市中文名称"}},
             "required": ["city_name"]}}},
+    {"type": "function","function": {
+        "name": "search_knowledge_base",
+        "description": "搜索校园知识库，查询校规、奖学金、宿舍、图书馆等相关规定。当用户问校园相关问题时调用此工具。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "用户的问题"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    }
+
 ]
 
 
@@ -230,6 +247,9 @@ while True:
                     tool_result = calculate(args.get("expr", ""))
                 elif func_name == "get_weather":
                     tool_result = get_weather(args.get("city_name", ""))
+                elif func_name == "search_knowledge_base":
+                    query = args["query"]
+                    tool_result = search_knowledge_base(query)
                 else:
                     tool_result = f"未知工具: {func_name}"
 
